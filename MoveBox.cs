@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System;
 using System.Collections;
 
@@ -15,12 +15,18 @@ public class MoveBox : MonoBehaviour {
 	public Vector3 downOffset;
 	public Vector3 leftOffset;
 	public Vector3 rightOffset;
-	
+
 	public bool pushingLeft = false;
 	public bool pushingRight = false;
 	public bool pushingUp = false;
 	public bool pushingDown = false;
 
+	public bool pullingLeft = false;
+	public bool pullingRight = false;
+	public bool pullingUp = false;
+	public bool pullingDown = false;
+
+	public bool pushing = false;
 	public bool pulling = false;
 
 	public bool movingLeft = false;
@@ -29,6 +35,8 @@ public class MoveBox : MonoBehaviour {
 	public bool movingDown = false;
 
 	public float distToAdjacent;
+	public float distToRobot;
+	public float pullDist;
 	public RaycastHit hit;
 	public int raycastLayer;
 
@@ -37,6 +45,25 @@ public class MoveBox : MonoBehaviour {
 
 	public GameObject beingPushedBy;
 	public bool childAgainstWall = false;
+
+	public bool hitSomething = false;
+
+	public GameObject robot;
+	public Vector3 leftRobotPosition;
+	public Vector3 rightRobotPosition;
+	public Vector3 upRobotPosition;
+	public Vector3 downRobotPosition;
+
+	public GameObject ghostbox;
+	public Vector3 leftGhostboxPosition;
+	public Vector3 rightGhostboxPosition;
+	public Vector3 upGhostboxPosition;
+	public Vector3 downGhostboxPosition;
+
+	public Vector3 leftPullGhostboxPosition;
+	public Vector3 rightPullGhostboxPosition;
+	public Vector3 upPullGhostboxPosition;
+	public Vector3 downPullGhostboxPosition;
 
 	public bool movingDisabled = false;
 
@@ -100,37 +127,64 @@ public class MoveBox : MonoBehaviour {
 
 		upOffset = startPosition + new Vector3(0.84f, 0, 0);
 		downOffset = startPosition + new Vector3(-0.84f, 0, 0);
+
+		//replace with directional pos x4
+		leftRobotPosition = startPosition + new Vector3(0, 0, 1.75f);
+		rightRobotPosition = startPosition + new Vector3(0, 0, -1.75f);
+
+		//replace with directional pos x4
+		leftGhostboxPosition = startPosition + new Vector3(0, 0, 2);
+		rightGhostboxPosition = startPosition + new Vector3(0, 0, -2);
+
+		//replace with directional pos x4
+		leftPullGhostboxPosition = startPosition + new Vector3(0, 0, 3);
+		rightPullGhostboxPosition = startPosition + new Vector3(0, 0, -3);
 	
 		//set it up so you can pull currentSeconds from TimeManagementScript
 		GameObject time = GameObject.Find ("time");
 		timeManagementScript = time.GetComponent<TimeManagementScript>();
 
-		distToAdjacent = 1.2f;
+		distToAdjacent = 1.16f;
+		distToRobot = 2.66f;
+		pullDist = 3.16f;
 		raycastLayer = 1 << 8;
 	}
 
 	void Update () {
 		if (gameObject.tag == "box" && !timeSet && center.looking && (left.left || right.right || up.up || down.down) && !movingDisabled) {
+
+			//pushing
 			if (left.left && Input.GetButtonDown ("Push")) {
 				movingDisabled = true;
-				PushingRight();
-				//pushingRight = false;
+				pushingRight = true;
+				Pushing(Vector3.back, Vector3.forward);
 			}
 			if (right.right && Input.GetButtonDown ("Push")) {;
 				movingDisabled = true;
-				//coroutine
+				pushingLeft = true;
+				Pushing(Vector3.forward, Vector3.back);
 			}
 			if (up.up && Input.GetButtonDown ("Push")) {
 				movingDisabled = true;
+				pushingDown = true;
 				//coroutine
 			}
 			if (down.down && Input.GetButtonDown ("Push")) {
 				movingDisabled = true;
+				pushingUp = true;
 				//coroutine
 			}
-			if (Input.GetButtonDown ("Pull")) {
+
+			//pulling
+			if (left.left && Input.GetButtonDown ("Pull")) {
 				movingDisabled = true;
-				//coroutine
+				pullingLeft = true;
+				Pulling(Vector3.forward);
+			}
+			if (right.right && Input.GetButtonDown ("Pull")) {
+				movingDisabled = true;
+				pullingRight = true;
+				Pulling(Vector3.back);
 			}
 		}
 
@@ -143,25 +197,43 @@ public class MoveBox : MonoBehaviour {
 			transform.position = Vector3.Lerp(startPosition, rightPosition, (currentSeconds - startSeconds) / totalSeconds);
 		}
 
+		if (movingLeft) {
+			transform.position = Vector3.Lerp(startPosition, leftPosition, (currentSeconds - startSeconds) / totalSeconds);
+		}
+
+		if (movingDown) {
+			transform.position = Vector3.Lerp(startPosition, downPosition, (currentSeconds - startSeconds) / totalSeconds);
+		}
+
+		if (movingUp) {
+			transform.position = Vector3.Lerp(startPosition, upPosition, (currentSeconds - startSeconds) / totalSeconds);
+		}
+
 		//reset when done moving!
 		if (startSeconds + totalSeconds < currentSeconds) {
 			StopCoroutine("StartMoving");
 			startCurrentSeconds = false;
 			transform.position = new Vector3(Mathf.Round (transform.position.x), Mathf.Round (transform.position.y), Mathf.Round (transform.position.z));
-			pushingLeft = false;
-			pushingRight = false;
-			pushingUp = false;
-			pushingDown = false;
 			movingLeft = false;
 			movingRight = false;
 			movingUp = false;
 			movingDown = false;
+			ResetPushDirections();
+			ResetPullDirections();
+			pushing = false;
+			pulling = false;
 			if (this.beingPushedBy != null) {
 				this.beingPushedBy = null;
 			}
 			startSeconds = 0;
 			currentSeconds = 0;
 			timeSet = false;
+			if (robot != null) {
+				Destroy(robot);
+			}
+			if (ghostbox != null) {
+				Destroy(ghostbox);
+			}
 			startPosition = new Vector3(transform.position.x, transform.position.y, transform.position.z);
 			leftPosition = new Vector3(transform.position.x, transform.position.y, transform.position.z + 2);
 			rightPosition = new Vector3(transform.position.x, transform.position.y, transform.position.z - 2);
@@ -169,65 +241,182 @@ public class MoveBox : MonoBehaviour {
 			downPosition = new Vector3(transform.position.x - 2, transform.position.y, transform.position.z);
 			upOffset = startPosition + new Vector3(0.84f, 0, 0);
 			downOffset = startPosition + new Vector3(-0.84f, 0, 0);
+			//reset leftOffset
+			//reset rightOffset
+			//replace with directional pos x4
+			leftRobotPosition = startPosition + new Vector3(0, 0, 1.75f);
+			rightRobotPosition = startPosition + new Vector3(0, 0, -1.75f);
+			//replace with directional pos x4
+			leftGhostboxPosition = startPosition + new Vector3(0, 0, 2);
+			rightGhostboxPosition = startPosition + new Vector3(0, 0, -2);
+			//replace with directional pos x4
+			leftPullGhostboxPosition = startPosition + new Vector3(0, 0, 3);
+			rightPullGhostboxPosition = startPosition + new Vector3(0, 0, -3);
+			this.gameObject.tag = "box";
 			movingDisabled = false;
 		}
 	}
 
 	public IEnumerator StartMoving() {
 		if (!startCurrentSeconds) {
+
 			timeSet = true;
 			startTime = DateTime.Now.TimeOfDay;
 			startSeconds = (float)startTime.TotalSeconds;
 
 			Debug.Log (startSeconds);
 
+			if (pushingLeft) {
+				ghostbox.transform.position = leftGhostboxPosition;
+				movingLeft = true;
+			}
+			if (pushingRight) {
+				ghostbox.transform.position = rightGhostboxPosition;
+				movingRight = true;
+			}
+			//add directions x2
+
+			if (pullingLeft) {
+				ghostbox.transform.position = leftPullGhostboxPosition;
+				movingLeft = true;
+			}
+			if (pullingRight) {
+				ghostbox.transform.position = rightPullGhostboxPosition;
+				movingRight = true;
+			}
+			//add directions x2
+
+			this.gameObject.tag = "movingbox";
+
+			if (this.beingPushedBy == null) {
+				robot = (GameObject)Instantiate(Resources.Load ("robot"));
+
+				if (pushingRight || pullingLeft) {
+					robot.transform.position = leftRobotPosition;
+				}
+
+				if (pushingLeft || pullingRight) {
+					robot.transform.position = rightRobotPosition;
+				}
+				//add directions x2
+
+				robot.transform.parent = this.gameObject.transform;
+				//check if colliding w/ player and move him/her; should this be in robot script?
+			}
+
 			startCurrentSeconds = true;
 		}
 		yield return null;
 	}
 
-	void PushingRight() {
-		//z axis is fucked so left/right are reversed
-		if (//replace this with raycasts x4; all using the same dist, checking for adj box, robot, ghostbox, boundary (x2 in opposite direction); then use tags if u need different effects
-		    Physics.Raycast (downOffset, Vector3.back, out hit, distToAdjacent, raycastLayer)) {
+	public void Pushing(Vector3 forwardDirection, Vector3 backwardDirection) {
+		//z axis is fucked so left/right (back/forward) are reversed
+		if (this.beingPushedBy == null) {
+			if (Physics.Raycast (upOffset, backwardDirection, out hit, distToRobot, raycastLayer)
+			    || Physics.Raycast (downOffset, backwardDirection, out hit, distToRobot, raycastLayer)) {
+				if (hit.collider.gameObject.tag == "ghostbox"
+				    || hit.collider.gameObject.tag == "robot"
+				    || hit.collider.gameObject.tag == "movingbox") {
+					Debug.Log ("robot cannot be spawned in space a box is moving to");
+					ResetPushDirections();
+					movingDisabled = false;
+					hitSomething = true;
+				}
+				Debug.Log (hit.collider.gameObject.name);
+			}
+		}
+		if (!hitSomething
+		    && (Physics.Raycast (upOffset, forwardDirection, out hit, distToAdjacent, raycastLayer)
+		    || Physics.Raycast (downOffset, forwardDirection, out hit, distToAdjacent, raycastLayer))) {
 			if (hit.collider.gameObject.tag == "box") {
 				Debug.Log ("hitting an adjacent box");
 				sphere = (GameObject)Instantiate(Resources.Load ("Sphere"));
 				sphere.transform.position = hit.point;
 				hit.collider.gameObject.GetComponent<MoveBox>().beingPushedBy = this.gameObject;
-				hit.collider.gameObject.GetComponent<MoveBox>().PushingRight();
+				if (pushingRight) {
+					hit.collider.gameObject.GetComponent<MoveBox>().pushingRight = true;
+					hit.collider.gameObject.GetComponent<MoveBox>().Pushing(Vector3.back, Vector3.forward);
+				}
+				if (pushingLeft) {
+					hit.collider.gameObject.GetComponent<MoveBox>().pushingLeft = true;
+					hit.collider.gameObject.GetComponent<MoveBox>().Pushing(Vector3.forward, Vector3.back);
+				}
+				//add directions x2
 				//iterate the childAgainstWall bool upward to any parents
 				if (childAgainstWall) {
 					if (this.beingPushedBy != null) {
 						this.beingPushedBy.GetComponent<MoveBox>().childAgainstWall = true;
 						this.beingPushedBy = null;
 					}
-					pushingRight = false;
 					childAgainstWall = false;
+					ResetPushDirections();
 					movingDisabled = false;
 				}
 				//move if no children are against wall
 				else if (!childAgainstWall) {
-					movingRight = true;
+					ghostbox = (GameObject)Instantiate(Resources.Load ("ghostbox"));
 					StartCoroutine("StartMoving");
 				}
 			}
-			else if (hit.collider.gameObject.tag == "pushboundary" || hit.collider.gameObject.tag == "ghostbox") {
-				//insert GUI here: "hitting a wall" || "hitting a ghostbox"
-				Debug.Log("hitting push boundary or ghostbox");
+			else if (hit.collider.gameObject.tag == "pushboundary"
+			         || hit.collider.gameObject.tag == "ghostbox"
+			         || hit.collider.gameObject.tag == "movingbox"
+			         || hit.collider.gameObject.tag == "robot") {
+				//insert GUI here: "hitting a wall" || "hitting a ghostbox" || "hitting a movingbox"
+				Debug.Log("hitting push boundary, ghostbox, or moving box");
 				if (this.beingPushedBy != null) {
 					this.beingPushedBy.GetComponent<MoveBox>().childAgainstWall = true;
 					this.beingPushedBy = null;
 				}
-				pushingRight = false;
+				ResetPushDirections();
 				movingDisabled = false;
+			}
+			else {
+				ghostbox = (GameObject)Instantiate(Resources.Load ("ghostbox"));
+				StartCoroutine("StartMoving");
+			}
+		}
+		else if (!hitSomething) {
+			ghostbox = (GameObject)Instantiate(Resources.Load ("ghostbox"));
+			StartCoroutine("StartMoving");
+		}
+		hitSomething = false;
+	}
+
+	public void ResetPushDirections() {
+		pushingLeft = false;
+		pushingRight = false;
+		pushingUp = false;
+		pushingDown = false;
+	}
+
+	public void Pulling(Vector3 pullDirection) {
+		if (Physics.Raycast (upOffset, pullDirection, out hit, pullDist, raycastLayer)
+		    || Physics.Raycast (downOffset, pullDirection, out hit, pullDist, raycastLayer)) {
+			if (hit.collider.gameObject.tag == "pullboundary"
+			    || hit.collider.gameObject.tag == "ghostbox"
+			    || hit.collider.gameObject.tag == "robot"
+			    || hit.collider.gameObject.tag == "movingbox"
+			    || hit.collider.gameObject.tag == "box") {
+				Debug.Log("hitting pull boundary, ghostbox, robot, or moving box");
+				ResetPullDirections();
+				movingDisabled = false;
+			}
+			else {
+				ghostbox = (GameObject)Instantiate(Resources.Load ("pull_ghostbox"));
+				StartCoroutine("StartMoving");
 			}
 		}
 		else {
-			sphere = (GameObject)Instantiate(Resources.Load ("Sphere"));
-			sphere.transform.position = downOffset + new Vector3(0, 0, -distToAdjacent);
-			movingRight = true;
+			ghostbox = (GameObject)Instantiate(Resources.Load ("pull_ghostbox"));
 			StartCoroutine("StartMoving");
 		}
+	}
+
+	public void ResetPullDirections() {
+		pullingLeft = false;
+		pullingRight = false;
+		pullingUp = false;
+		pullingDown = false;
 	}
 }
