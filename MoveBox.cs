@@ -53,6 +53,8 @@ public class MoveBox : MonoBehaviour {
 	public Vector3 rightRobotPosition;
 	public Vector3 upRobotPosition;
 	public Vector3 downRobotPosition;
+	
+	public BoxCollider robotCollider;
 
 	public GameObject ghostbox;
 	public Vector3 leftGhostboxPosition;
@@ -127,19 +129,13 @@ public class MoveBox : MonoBehaviour {
 
 		upOffset = startPosition + new Vector3(0.84f, 0, 0);
 		downOffset = startPosition + new Vector3(-0.84f, 0, 0);
+		//leftOffset = startPosition + new Vector3(0, 0, 0.84f);
+		//rightOffset = startPosition + new Vector3(0, 0, -0.84f);
 
-		//replace with directional pos x4
-		leftRobotPosition = startPosition + new Vector3(0, 0, 1.75f);
-		rightRobotPosition = startPosition + new Vector3(0, 0, -1.75f);
+		ResetRobotPositions();
+		ResetGhostboxPositions();
+		ResetPullGhostboxPositions();
 
-		//replace with directional pos x4
-		leftGhostboxPosition = startPosition + new Vector3(0, 0, 2);
-		rightGhostboxPosition = startPosition + new Vector3(0, 0, -2);
-
-		//replace with directional pos x4
-		leftPullGhostboxPosition = startPosition + new Vector3(0, 0, 3);
-		rightPullGhostboxPosition = startPosition + new Vector3(0, 0, -3);
-	
 		//set it up so you can pull currentSeconds from TimeManagementScript
 		GameObject time = GameObject.Find ("time");
 		timeManagementScript = time.GetComponent<TimeManagementScript>();
@@ -154,6 +150,7 @@ public class MoveBox : MonoBehaviour {
 		if (gameObject.tag == "box" && !timeSet && center.looking && (left.left || right.right || up.up || down.down) && !movingDisabled) {
 
 			//pushing
+			//all the axes are wrong so all the Vector3 directions are fucked, oops
 			if (left.left && Input.GetButtonDown ("Push")) {
 				movingDisabled = true;
 				pushingRight = true;
@@ -167,12 +164,12 @@ public class MoveBox : MonoBehaviour {
 			if (up.up && Input.GetButtonDown ("Push")) {
 				movingDisabled = true;
 				pushingDown = true;
-				//coroutine
+				Pushing(Vector3.left, Vector3.right);
 			}
 			if (down.down && Input.GetButtonDown ("Push")) {
 				movingDisabled = true;
 				pushingUp = true;
-				//coroutine
+				Pushing(Vector3.right, Vector3.left);
 			}
 
 			//pulling
@@ -185,6 +182,16 @@ public class MoveBox : MonoBehaviour {
 				movingDisabled = true;
 				pullingRight = true;
 				Pulling(Vector3.back);
+			}
+			if (up.up & Input.GetButtonDown ("Pull")) {
+				movingDisabled = true;
+				pullingUp = true;
+				Pulling(Vector3.right);
+			}
+			if (down.down & Input.GetButtonDown ("Pull")) {
+				movingDisabled = true;
+				pullingDown = true;
+				Pulling(Vector3.left);
 			}
 		}
 
@@ -244,14 +251,9 @@ public class MoveBox : MonoBehaviour {
 			//reset leftOffset
 			//reset rightOffset
 			//replace with directional pos x4
-			leftRobotPosition = startPosition + new Vector3(0, 0, 1.75f);
-			rightRobotPosition = startPosition + new Vector3(0, 0, -1.75f);
-			//replace with directional pos x4
-			leftGhostboxPosition = startPosition + new Vector3(0, 0, 2);
-			rightGhostboxPosition = startPosition + new Vector3(0, 0, -2);
-			//replace with directional pos x4
-			leftPullGhostboxPosition = startPosition + new Vector3(0, 0, 3);
-			rightPullGhostboxPosition = startPosition + new Vector3(0, 0, -3);
+			ResetRobotPositions();
+			ResetGhostboxPositions();
+			ResetPullGhostboxPositions();
 			this.gameObject.tag = "box";
 			movingDisabled = false;
 		}
@@ -274,7 +276,14 @@ public class MoveBox : MonoBehaviour {
 				ghostbox.transform.position = rightGhostboxPosition;
 				movingRight = true;
 			}
-			//add directions x2
+			if (pushingUp) {
+				ghostbox.transform.position = upGhostboxPosition;
+				movingUp = true;
+			}
+			if (pushingDown) {
+				ghostbox.transform.position = downGhostboxPosition;
+				movingDown = true;
+			}
 
 			if (pullingLeft) {
 				ghostbox.transform.position = leftPullGhostboxPosition;
@@ -284,7 +293,16 @@ public class MoveBox : MonoBehaviour {
 				ghostbox.transform.position = rightPullGhostboxPosition;
 				movingRight = true;
 			}
-			//add directions x2
+			if (pullingUp) {
+				ghostbox.transform.Rotate (0, 90, 0);
+				ghostbox.transform.position = upPullGhostboxPosition;
+				movingUp = true;
+			}
+			if (pullingDown) {
+				ghostbox.transform.Rotate (0, 90, 0);
+				ghostbox.transform.position = downPullGhostboxPosition;
+				movingDown = true;
+			}
 
 			this.gameObject.tag = "movingbox";
 
@@ -296,9 +314,20 @@ public class MoveBox : MonoBehaviour {
 				}
 
 				if (pushingLeft || pullingRight) {
+					robotCollider =  robot.GetComponent<Collider>() as BoxCollider;
+					robotCollider.center = new Vector3(0, 0, 0.125f);
 					robot.transform.position = rightRobotPosition;
 				}
-				//add directions x2
+
+				if (pushingDown || pullingUp) {
+					robot.transform.Rotate(0, 90, 0);
+					robot.transform.position = upRobotPosition;
+				}
+
+				if (pushingUp || pullingDown) {
+					robot.transform.Rotate(0, -90, 0);
+					robot.transform.position = downRobotPosition;
+				}
 
 				robot.transform.parent = this.gameObject.transform;
 				//check if colliding w/ player and move him/her; should this be in robot script?
@@ -310,7 +339,10 @@ public class MoveBox : MonoBehaviour {
 	}
 
 	public void Pushing(Vector3 forwardDirection, Vector3 backwardDirection) {
-		//z axis is fucked so left/right (back/forward) are reversed
+		if (pushingUp || pushingDown) {
+			upOffset = startPosition + new Vector3(0, 0, 0.84f);
+			downOffset = startPosition + new Vector3(0, 0, -0.84f);
+		}
 		if (this.beingPushedBy == null) {
 			if (Physics.Raycast (upOffset, backwardDirection, out hit, distToRobot, raycastLayer)
 			    || Physics.Raycast (downOffset, backwardDirection, out hit, distToRobot, raycastLayer)) {
@@ -330,8 +362,6 @@ public class MoveBox : MonoBehaviour {
 		    || Physics.Raycast (downOffset, forwardDirection, out hit, distToAdjacent, raycastLayer))) {
 			if (hit.collider.gameObject.tag == "box") {
 				Debug.Log ("hitting an adjacent box");
-				sphere = (GameObject)Instantiate(Resources.Load ("Sphere"));
-				sphere.transform.position = hit.point;
 				hit.collider.gameObject.GetComponent<MoveBox>().beingPushedBy = this.gameObject;
 				if (pushingRight) {
 					hit.collider.gameObject.GetComponent<MoveBox>().pushingRight = true;
@@ -341,7 +371,14 @@ public class MoveBox : MonoBehaviour {
 					hit.collider.gameObject.GetComponent<MoveBox>().pushingLeft = true;
 					hit.collider.gameObject.GetComponent<MoveBox>().Pushing(Vector3.forward, Vector3.back);
 				}
-				//add directions x2
+				if (pushingDown) {
+					hit.collider.gameObject.GetComponent<MoveBox>().pushingDown = true;
+					hit.collider.gameObject.GetComponent<MoveBox>().Pushing(Vector3.left, Vector3.right);
+				}
+				if (pushingUp) {
+					hit.collider.gameObject.GetComponent<MoveBox>().pushingUp = true;
+					hit.collider.gameObject.GetComponent<MoveBox>().Pushing(Vector3.right, Vector3.left);
+				}
 				//iterate the childAgainstWall bool upward to any parents
 				if (childAgainstWall) {
 					if (this.beingPushedBy != null) {
@@ -366,6 +403,7 @@ public class MoveBox : MonoBehaviour {
 				Debug.Log("hitting push boundary, ghostbox, or moving box");
 				if (this.beingPushedBy != null) {
 					this.beingPushedBy.GetComponent<MoveBox>().childAgainstWall = true;
+					Debug.Log (this.beingPushedBy.gameObject.name);
 					this.beingPushedBy = null;
 				}
 				ResetPushDirections();
@@ -391,6 +429,10 @@ public class MoveBox : MonoBehaviour {
 	}
 
 	public void Pulling(Vector3 pullDirection) {
+		if (pullingUp || pullingDown) {
+			upOffset = startPosition + new Vector3(0, 0, 0.84f);
+			downOffset = startPosition + new Vector3(0, 0, -0.84f);
+		}
 		if (Physics.Raycast (upOffset, pullDirection, out hit, pullDist, raycastLayer)
 		    || Physics.Raycast (downOffset, pullDirection, out hit, pullDist, raycastLayer)) {
 			if (hit.collider.gameObject.tag == "pullboundary"
@@ -418,5 +460,26 @@ public class MoveBox : MonoBehaviour {
 		pullingRight = false;
 		pullingUp = false;
 		pullingDown = false;
+	}
+
+	public void ResetRobotPositions() {
+		leftRobotPosition = startPosition + new Vector3(0, 0, 1.75f);
+		rightRobotPosition = startPosition + new Vector3(0, 0, -1.75f);
+		upRobotPosition = startPosition + new Vector3(1.75f, 0, 0);
+		downRobotPosition = startPosition + new Vector3(-1.75f, 0, 0);
+	}
+
+	public void ResetGhostboxPositions() {
+		leftGhostboxPosition = startPosition + new Vector3(0, 0, 2);
+		rightGhostboxPosition = startPosition + new Vector3(0, 0, -2);
+		upGhostboxPosition = startPosition + new Vector3(2, 0, 0);
+		downGhostboxPosition = startPosition + new Vector3(-2, 0, 0);
+	}
+
+	public void ResetPullGhostboxPositions() {
+		leftPullGhostboxPosition = startPosition + new Vector3(0, 0, 3);
+		rightPullGhostboxPosition = startPosition + new Vector3(0, 0, -3);
+		upPullGhostboxPosition = startPosition + new Vector3(3, 0, 0);
+		downPullGhostboxPosition = startPosition + new Vector3(-3, 0, 0);
 	}
 }
